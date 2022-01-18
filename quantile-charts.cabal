@@ -40,7 +40,7 @@ library
   default-extensions:
   build-depends:
     chart-svg ^>= 0.3,
-    lens,
+    optics-core,
     text,
     unordered-containers,
   exposed-modules:

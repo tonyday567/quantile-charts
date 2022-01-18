@@ -1,9 +1,9 @@
 packages:
   quantile-charts.cabal
+  ../chart-svg/chart-svg.cabal
+  ../formatn/formatn.cabal
 
 source-repository-package
   type: git
-  location: https://github.com/tonyday567/chart-svg
-  tag: 6854d2b8b73ab2ab188d0625ebd2de64e1fbd605
-
-allow-newer: attoparsec
+  branch: main
+  location: https://github.com/tonyday567/numhask-space.git

@@ -1,13 +1,12 @@
-{-# LANGUAGE OverloadedLabels #-}
-{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# OPTIONS_GHC -Wall #-}
 
 -- | Quantile chart patterns.
 module Chart.Quantile
   (
-    blendMidLineStyles,
-
-    -- * chart patterns
+    -- * quantile chart patterns
     quantileChart,
     histChart,
     quantileHistChart,
@@ -16,26 +15,12 @@ module Chart.Quantile
 where
 
 import Chart
-import Control.Lens
-import Data.Bifunctor
+import Optics.Core
 import Data.Foldable
 import Data.Maybe
 import Data.Text (Text)
-import qualified Data.List.NonEmpty as NonEmpty
-import Data.List.NonEmpty (NonEmpty)
 import Prelude hiding (abs)
 import qualified Data.HashMap.Strict as HashMap
-
--- | /blendMidLineStyle n w/ produces n lines of size w interpolated between two colors.
---
--- These usually are used to represent probability bounds.
-blendMidLineStyles :: Int -> Double -> (Colour, Colour) -> [LineStyle]
-blendMidLineStyles l w (c1, c2) = lo
-  where
-    m = (fromIntegral l - 1) / 2 :: Double
-    cs = (\x -> 1 - abs (fromIntegral x - m) / m) <$> [0 .. (l - 1)]
-    bs = (\x -> blend x c1 c2) <$> cs
-    lo = (\c -> defaultLineStyle & #size .~ w & #color .~ c) <$> bs
 
 -- * charts
 -- | Chart template for quantiles.
@@ -44,47 +29,48 @@ quantileChart ::
   [Text] ->
   [LineStyle] ->
   [AxisOptions] ->
-  [NonEmpty Double] ->
+  [[Double]] ->
   ChartSvg
 quantileChart title' names ls as xs =
-  mempty & #hudOptions .~ hudOptions' & #chartTree .~ chart'
+  mempty & #charts .~ chart0 & #hudOptions .~ hudOptions'
   where
+    hudOptions' :: HudOptions
     hudOptions' =
       defaultHudOptions
-        & #hudTitles .~ [defaultTitle title']
-        & ( #hudLegend
-              .~ Just
-                ( defaultLegendOptions
-                    & #ltext . #size .~ 0.1
+        & #titles .~ [(10,defaultTitle title')]
+        & ( #legends
+              .~
+                [(12, defaultLegendOptions
+                    & #textStyle % #size .~ 0.1
                     & #vgap .~ 0.05
                     & #innerPad .~ 0.2
-                    & #lplace .~ PlaceRight,
-                  first LineA <$> zip ls names
-                )
+                    & #place .~ PlaceRight
+                    & #content .~ undefined -- zipWith (\(l,name) -> (LineChart l [[(Point 0 0, Point 1 1)]], name)) ls names
+                )]
           )
-        & #hudAxes .~ as
+        & set #axes ((5,) <$> as)
 
-    chart' =
+    chart0 = unnamed $
       zipWith (\s d -> LineChart s [d])
         ls
-        (NonEmpty.zipWith Point [0 ..] <$> xs)
+        (zipWith Point [0 ..] <$> xs)
 
 -- | histogram chart
 histChart ::
   Text ->
-  Maybe (NonEmpty Text) ->
+  [Text] ->
   Range Double ->
   Int ->
-  NonEmpty Double ->
+  [Double] ->
   ChartSvg
 histChart title' names r g xs =
   barChart defaultBarOptions barData'
-    & (#hudOptions . #hudTitles .~ [defaultTitle title'])
+    & (#hudOptions % #titles .~ [(10,defaultTitle title')])
   where
-    barData' = BarData [hr] names Nothing
+    barData' = BarData [hr] names []
     hcuts = grid OuterPos r g
     h = fill hcuts xs
-    hr = NonEmpty.fromList $
+    hr =
       (\(Rect x x' _ _) -> (x + x') / 2)
         <$> makeRects (IncludeOvers (width r / fromIntegral g)) h
 
@@ -93,36 +79,34 @@ histChart title' names r g xs =
 -- Will error if less than 2 quantiles
 quantileHistChart ::
   Text ->
-  Maybe (NonEmpty Text) ->
+  Maybe [Text]->
   -- | quantiles
-  NonEmpty Double ->
+  [Double]->
   -- | quantile values
-  NonEmpty Double ->
+  [Double]->
   ChartSvg
 quantileHistChart title' names qs vs =
-  mempty & #hudOptions .~ hudOptions' & #chartTree .~ [chart']
+  mempty & #hudOptions .~ hudOptions' & #charts .~ unnamed [chart0]
   where
     hudOptions' =
       defaultHudOptions
-        & #hudTitles
-        .~ [defaultTitle title']
-        & #hudAxes
+        & #titles
+        .~ [(10, defaultTitle title')]
+        & #axes
         .~ [ maybe
-               ( defaultAxisOptions & #axisTick . #tstyle
-                   .~ TickRound (FormatPrec (Just 3)) 8 TickExtend
-               )
+               (5, defaultAxisOptions & #ticks % #style
+                   .~ TickRound (FormatPrec (Just 3)) 8 TickExtend)
                ( \x ->
-                   defaultAxisOptions & #axisTick . #tstyle
-                     .~ TickPlaced (zip (toList vs) x)
+                   (5, defaultAxisOptions & #ticks % #style
+                     .~ TickPlaced (zip (toList vs) x))
                )
                (toList <$> names)
            ]
-    chart' = RectChart defaultRectStyle hr
-    hr =
-      NonEmpty.zipWith
+    chart0 = RectChart defaultRectStyle hr
+    hr = zipWith
         (\(y, w) (x, z) -> Rect x z 0 ((w - y) / (z - x)))
-        (NonEmpty.zip qs (NonEmpty.fromList $ NonEmpty.drop 1 qs))
-        (NonEmpty.zip vs (NonEmpty.fromList $ NonEmpty.drop 1 vs))
+        (zip qs (drop 1 qs))
+        (zip vs (drop 1 vs))
 
 -- | pixel chart of digitized vs digitized counts
 digitSurfaceChart ::
@@ -131,9 +115,9 @@ digitSurfaceChart ::
   (Text, Text, Text) ->
   [Text] ->
   [(Int, Int)] ->
-  [Chart Double]
+  Charts (Maybe Text)
 digitSurfaceChart pixelStyle plo ts names ps =
-  runHud (aspect 1) (hs0 <> hs1) (cs0 <> cs1)
+  runHud (aspect 1) (hs0 <> hs1) (unnamed [BlankChart [cs0]] <> unnamed cs1)
   where
     l = length names
     pts = Point l l
@@ -142,7 +126,7 @@ digitSurfaceChart pixelStyle plo ts names ps =
     mapCount = foldl' (\m x -> HashMap.insertWith (+) x 1.0 m) HashMap.empty ps
     f :: Point Double -> Double
     f (Point x y) = fromMaybe 0 $ HashMap.lookup (floor x, floor y) mapCount
-    (hs0, cs0) = makeHud gr (qvqHud ts names)
+    (hs0, cs0) = toHuds (qvqHud ts names) gr
     (cs1, hs1) =
       surfacefl
         f
@@ -153,21 +137,21 @@ digitSurfaceChart pixelStyle plo ts names ps =
 qvqHud :: (Text, Text, Text) -> [Text] -> HudOptions
 qvqHud ts labels =
   defaultHudOptions
-    & #hudTitles .~ makeTitles ts
-    & #hudAxes
-      .~ [ defaultAxisOptions
-             & #axisTick . #tstyle .~ TickPlaced (zip ((0.5 +) <$> [0 ..]) labels)
+    & #titles .~ makeTitles 10 ts
+    & #axes
+      .~ ((10,) <$> [ defaultAxisOptions
+             & #ticks % #style .~ TickPlaced (zip ((0.5 +) <$> [0 ..]) labels)
              & #place .~ PlaceLeft,
            defaultAxisOptions
-             & #axisTick . #tstyle .~ TickPlaced (zip ((0.5 +) <$> [0 ..]) labels)
+             & #ticks % #style .~ TickPlaced (zip ((0.5 +) <$> [0 ..]) labels)
              & #place .~ PlaceBottom
-         ]
+         ])
 
-makeTitles :: (Text, Text, Text) -> [Title]
-makeTitles (t, xt, yt) =
-  reverse
+makeTitles :: Priority -> (Text, Text, Text) -> [(Priority, Title)]
+makeTitles p (t, xt, yt) =
+  (p,) <$> reverse
     [ defaultTitle t,
-      defaultTitle xt & #place .~ PlaceBottom & #style . #size .~ 0.06,
-      defaultTitle yt & #place .~ PlaceLeft & #style . #size .~ 0.06
+      defaultTitle xt & #place .~ PlaceBottom & #style % #size .~ 0.06,
+      defaultTitle yt & #place .~ PlaceLeft & #style % #size .~ 0.06
     ]
 
