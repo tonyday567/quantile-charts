@@ -41,7 +41,10 @@ library
   build-depends:
     chart-svg ^>= 0.3,
     optics-core,
+    numhask-space,
     text,
     unordered-containers,
+    statistics,
+    random,
   exposed-modules:
     Chart.Quantile
