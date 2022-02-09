@@ -1,5 +1,7 @@
 #+title: quantile-charts
 
+[[https://hackage.haskell.org/package/quantile-charts][file:https://img.shields.io/hackage/v/quantile-charts.svg]] [[https://github.com/tonyday567/quantile-charts/actions?query=workflow%3Ahaskell-ci][file:https://github.com/tonyday567/quantile-charts/workflows/haskell-ci/badge.svg]]
+
 Templates for charting quantile information.
 
 Data is usually a time series in the form of a [Double] for each time period.
